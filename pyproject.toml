@@ -1,0 +1,26 @@
+[project]
+name = "predictive-ml"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "joblib>=1.6.0",
+    "matplotlib>=3.11.1",
+    "pandas>=3.0.5",
+    "scikit-learn>=1.9.0",
+    "ucimlrepo>=0.0.7",
+]
+
+[project.scripts]
+predictive-ml = "predictive_ml:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.6",
+]
