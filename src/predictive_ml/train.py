@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import joblib
+from pathlib import Path
 
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
@@ -8,6 +10,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import (
     StratifiedKFold,
+    RepeatedStratifiedKFold,
     cross_validate,
     train_test_split,
     cross_val_predict
@@ -16,11 +19,16 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
+    roc_auc_score,
+    average_precision_score,
+    confusion_matrix,
+    make_scorer,
 )
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from predictive_ml.data import load_data
+
 RANDOM_STATE = 2
 
 def build_preprocessor(Xtr):
@@ -52,12 +60,12 @@ def build_preprocessor(Xtr):
     return preprocessing
 
 
-def eval_models(Xtr, ytr, preprocessing, cross_validation, models):
+def eval_models(Xtr, ytr, preprocessing, model_cv, models):
 
     scoring = {
-        "precision": "precision",
-        "recall": "recall",
-        "f1": "f1",
+        "precision": make_scorer( precision_score, zero_division=0 ),
+        "recall": make_scorer( recall_score, zero_division=0 ),
+        "f1": make_scorer( f1_score, zero_division=0 ),
         "roc_auc": "roc_auc",
         "pr_auc": "average_precision",
     }
@@ -68,7 +76,7 @@ def eval_models(Xtr, ytr, preprocessing, cross_validation, models):
 
         pipeline = make_pipeline( preprocessing, classifier )
 
-        scores = cross_validate( pipeline, Xtr, ytr, cv=cross_validation, scoring=scoring, n_jobs=-1)
+        scores = cross_validate( pipeline, Xtr, ytr, cv=model_cv, scoring=scoring, n_jobs=-1)
 
         result = {
             "model": model_name,
@@ -85,12 +93,12 @@ def eval_models(Xtr, ytr, preprocessing, cross_validation, models):
     return result_df
 
 
-def eval_thresholds(model, Xtr, ytr, cross_validation):
+def eval_thresholds(model, Xtr, ytr, threshold_cv):
 
     probabilities = cross_val_predict(
         model,
         Xtr, ytr,
-        cv = cross_validation, 
+        cv = threshold_cv, 
         method="predict_proba",
         n_jobs=-1
     )[:, 1]
@@ -115,6 +123,40 @@ def eval_thresholds(model, Xtr, ytr, cross_validation):
     return result_df
 
 
+def eval_final(model, Xtr, ytr, Xte, yte, threshold):
+
+    # Training for test with best parameters
+    model.fit(Xtr, ytr)
+
+    probabilities = model.predict_proba(Xte)[:, 1]
+    predict = (probabilities >= threshold).astype(int)
+
+    results = {
+        "precision": precision_score(yte, predict),
+        "recall": recall_score(yte, predict),
+        "f1": f1_score(yte, predict),
+        "roc_auc": roc_auc_score(yte, probabilities),
+        "pr_auc": average_precision_score(yte, probabilities),
+    }
+
+    return results, confusion_matrix(yte, predict)
+
+
+def save_model(model, threshold):
+
+    Path("models").mkdir(exist_ok=True)
+
+    artifact = {
+        "model": model,
+        "threshold": threshold,
+    }
+
+    joblib.dump(
+        artifact,
+        "models/predictive_model.joblib"
+    )
+
+
 # Main
 def main():
     X, y = load_data()
@@ -126,21 +168,16 @@ def main():
         stratify=y,
     )
 
-
     preprocessing = build_preprocessor(Xtr)
-    cross_validation = StratifiedKFold(
-        n_splits=5,
-        shuffle=True,
-        random_state=RANDOM_STATE,
-    )
+    model_cv = RepeatedStratifiedKFold( n_splits=5, n_repeats=5, random_state=RANDOM_STATE ) # Using repeated cross val to reduce dependency on a single data split
 
     # Choosing best model
     models = {
         "dummy": DummyClassifier(strategy = "prior" ),
-        "logistical_regression": LogisticRegression( max_iter=2000, class_weight="balanced", random_state=RANDOM_STATE ),
+        "logistic_regression": LogisticRegression( max_iter=2000, class_weight="balanced", random_state=RANDOM_STATE ),
         "random_forest": RandomForestClassifier( n_estimators=300, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1)
     }
-    results_df = eval_models(Xtr, ytr, preprocessing, cross_validation, models)
+    results_df = eval_models(Xtr, ytr, preprocessing, model_cv, models)
 
     print("\nModel comparison:")
     print(
@@ -153,9 +190,10 @@ def main():
     print(f"\nBest model: {best_model_name}")
 
     # Choosing best threshold
+    threshold_cv = StratifiedKFold( n_splits=5, shuffle=True, random_state=RANDOM_STATE ) # cross_val_predict needs each sample to be validated only once
     best_classifier = models[best_model_name]
     model = make_pipeline( preprocessing, best_classifier )
-    threshold_results = eval_thresholds(model, Xtr, ytr, cross_validation)
+    threshold_results = eval_thresholds(model, Xtr, ytr, threshold_cv)
 
     print("\nThreshold comparison:")
     print(
@@ -167,6 +205,18 @@ def main():
 
     best_threshold = threshold_results.iloc[0]["threshold"]
     print(f"\nBest threshold: {best_threshold:.2f}")
+
+    # Final evaluation
+    final_results, matrix = eval_final(model, Xtr, ytr, Xte, yte, best_threshold)
+    for metric, score in final_results.items():
+        print(f"{metric}: {score:.4f}")
+
+    print("\nConfusion matrix:")
+    print(matrix)
+
+    # Storing best model
+    save_model( model, best_threshold )
+    print("\nModel saved.")
 
 
 if __name__ == "__main__":
