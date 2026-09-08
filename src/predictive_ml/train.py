@@ -3,6 +3,8 @@ import numpy as np
 import joblib
 from pathlib import Path
 
+import mlflow
+import mlflow.sklearn
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -29,6 +31,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from predictive_ml.data import load_data
 
+EXPERIMENT_NAME = "predictive-maintenance"
 RANDOM_STATE = 2
 
 def build_preprocessor(Xtr):
@@ -67,7 +70,7 @@ def eval_models(Xtr, ytr, preprocessing, model_cv, models):
         "recall": make_scorer( recall_score, zero_division=0 ),
         "f1": make_scorer( f1_score, zero_division=0 ),
         "roc_auc": "roc_auc",
-        "pr_auc": "average_precision",
+        "average_precision": "average_precision",
     }
 
     results = []
@@ -76,20 +79,51 @@ def eval_models(Xtr, ytr, preprocessing, model_cv, models):
 
         pipeline = make_pipeline( preprocessing, classifier )
 
-        scores = cross_validate( pipeline, Xtr, ytr, cv=model_cv, scoring=scoring, n_jobs=-1)
+        with mlflow.start_run(run_name=f"cv_{model_name}"):
+            scores = cross_validate( pipeline, Xtr, ytr, cv=model_cv, scoring=scoring, n_jobs=-1)
 
-        result = {
-            "model": model_name,
-            "precision": scores["test_precision"].mean(),
-            "recall": scores["test_recall"].mean(),
-            "f1": scores["test_f1"].mean(),
-            "roc_auc": scores["test_roc_auc"].mean(),
-            "pr_auc": scores["test_pr_auc"].mean(),
-        }
+            result = {
+                "model": model_name,
+                "precision": scores["test_precision"].mean(),
+                "recall": scores["test_recall"].mean(),
+                "f1": scores["test_f1"].mean(),
+                "roc_auc": scores["test_roc_auc"].mean(),
+                "average_precision": scores[
+                    "test_average_precision"
+                ].mean(),
+            }
 
-        results.append(result)
+            results.append(result)
 
-    result_df = pd.DataFrame(results).sort_values("pr_auc", ascending=False,)
+            # MLflow
+            params = {
+                "model": model_name,
+                "random_state": RANDOM_STATE,
+                "cv_folds": model_cv.cvargs["n_splits"],
+                "cv_repeats": model_cv.n_repeats,
+            }
+            for key, value in classifier.get_params().items():
+                params[f"model_{key}"] = value
+
+            metrics = {
+                "cv_precision_mean": result["precision"],
+                "cv_recall_mean": result["recall"],
+                "cv_f1_mean": result["f1"],
+                "cv_roc_auc_mean": result["roc_auc"],
+                "cv_average_precision_mean": result["average_precision"],
+
+                "cv_precision_std": scores["test_precision"].std(),
+                "cv_recall_std": scores["test_recall"].std(),
+                "cv_f1_std": scores["test_f1"].std(),
+                "cv_roc_auc_std": scores["test_roc_auc"].std(),
+                "cv_average_precision_std": scores[
+                    "test_average_precision"
+                ].std(),
+            }
+            mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
+
+    result_df = pd.DataFrame(results).sort_values("average_precision", ascending=False,)
     return result_df
 
 
@@ -103,7 +137,7 @@ def eval_thresholds(model, Xtr, ytr, threshold_cv):
         n_jobs=-1
     )[:, 1]
 
-    thresholds = np.arange(0.1, 0.91, 0.05)
+    thresholds = np.round(np.arange(0.1, 0.91, 0.05))
 
     results = []
     for threshold in thresholds:
@@ -136,7 +170,7 @@ def eval_final(model, Xtr, ytr, Xte, yte, threshold):
         "recall": recall_score(yte, predict),
         "f1": f1_score(yte, predict),
         "roc_auc": roc_auc_score(yte, probabilities),
-        "pr_auc": average_precision_score(yte, probabilities),
+        "average_precision": average_precision_score(yte, probabilities),
     }
 
     return results, confusion_matrix(yte, predict)
@@ -159,6 +193,7 @@ def save_model(model, threshold):
 
 # Main
 def main():
+    mlflow.set_experiment(EXPERIMENT_NAME)
     X, y = load_data()
 
     Xtr, Xte, ytr, yte = train_test_split(
@@ -208,6 +243,19 @@ def main():
 
     # Final evaluation
     final_results, matrix = eval_final(model, Xtr, ytr, Xte, yte, best_threshold)
+    # MLflow for final model
+    final_params = {
+        "model": best_model_name,
+        "threshold": best_threshold,
+        "random_state": RANDOM_STATE
+    }
+    with mlflow.start_run(run_name=f"final_{best_model_name}"):
+        mlflow.log_params(final_params)
+        for metric, score in final_results.items():
+            mlflow.log_metric( f"test_{metric}", score )
+
+        mlflow.sklearn.log_model(sk_model=model, name="model", skops_trusted_types=["numpy.dtype"])
+
     for metric, score in final_results.items():
         print(f"{metric}: {score:.4f}")
 
