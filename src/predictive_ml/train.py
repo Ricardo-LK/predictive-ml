@@ -137,7 +137,7 @@ def eval_thresholds(model, Xtr, ytr, threshold_cv):
         n_jobs=-1
     )[:, 1]
 
-    thresholds = np.round(np.arange(0.1, 0.91, 0.05))
+    thresholds = np.round(np.arange(0.1, 0.91, 0.05), 2)
 
     results = []
     for threshold in thresholds:
@@ -145,9 +145,9 @@ def eval_thresholds(model, Xtr, ytr, threshold_cv):
 
         result = {
             "threshold": threshold,
-            "precision": precision_score(ytr, predict),
-            "recall": recall_score(ytr, predict),
-            "f1": f1_score(ytr, predict),
+            "precision": precision_score(ytr, predict, zero_division=0),
+            "recall": recall_score(ytr, predict, zero_division=0),
+            "f1": f1_score(ytr, predict, zero_division=0),
         }
 
         results.append(result)
