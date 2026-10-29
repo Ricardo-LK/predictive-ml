@@ -6,10 +6,7 @@ from pathlib import Path
 import mlflow
 import mlflow.sklearn
 from sklearn.compose import ColumnTransformer
-from sklearn.dummy import DummyClassifier
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import (
     StratifiedKFold,
     RepeatedStratifiedKFold,
@@ -30,6 +27,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from predictive_ml.data import load_data
+from predictive_ml.models import get_models
 
 EXPERIMENT_NAME = "predictive-maintenance"
 RANDOM_STATE = 2
@@ -207,11 +205,7 @@ def main():
     model_cv = RepeatedStratifiedKFold( n_splits=5, n_repeats=5, random_state=RANDOM_STATE ) # Using repeated cross val to reduce dependency on a single data split
 
     # Choosing best model
-    models = {
-        "dummy": DummyClassifier(strategy = "prior" ),
-        "logistic_regression": LogisticRegression( max_iter=2000, class_weight="balanced", random_state=RANDOM_STATE ),
-        "random_forest": RandomForestClassifier( n_estimators=300, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1)
-    }
+    models = get_models(RANDOM_STATE)
     results_df = eval_models(Xtr, ytr, preprocessing, model_cv, models)
 
     print("\nModel comparison:")
