@@ -1,26 +1,38 @@
 package com.predictivemaintenance.web_service.dto;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 
+/**
+ * Mirrors the Python API's PredictionRequest. Wrapper types plus @NotNull make
+ * missing fields a 400 instead of silently defaulting to 0.
+ */
 public record PredictionRequest(
 
-    @NotBlank
+    @NotNull
+    @Pattern(regexp = "[LMH]", message = "must be one of L, M, H")
     String type,
 
-    @PositiveOrZero
-    double airTemperature,
+    /** Air temperature [K]. */
+    @NotNull @Positive
+    Double airTemperature,
 
-    @PositiveOrZero
-    double processTemperature,
+    /** Process temperature [K]. */
+    @NotNull @Positive
+    Double processTemperature,
 
-    @PositiveOrZero
-    int rotationalSpeed,
+    /** Rotational speed [rpm]. */
+    @NotNull @PositiveOrZero
+    Integer rotationalSpeed,
 
-    @PositiveOrZero
-    double torque,
+    /** Torque [Nm]. */
+    @NotNull @PositiveOrZero
+    Double torque,
 
-    @PositiveOrZero
-    int toolWear
+    /** Tool wear [min]. */
+    @NotNull @PositiveOrZero
+    Integer toolWear
 
 ) {}

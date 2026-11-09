@@ -1,36 +1,36 @@
-import pandas as pd
-import numpy as np
-import joblib
-from pathlib import Path
-
 import mlflow
 import mlflow.sklearn
+import numpy as np
+import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import (
-    StratifiedKFold,
-    RepeatedStratifiedKFold,
-    cross_validate,
-    train_test_split,
-    cross_val_predict
-)
 from sklearn.metrics import (
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score,
     average_precision_score,
     confusion_matrix,
+    f1_score,
     make_scorer,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import (
+    RepeatedStratifiedKFold,
+    StratifiedKFold,
+    cross_val_predict,
+    cross_validate,
+    train_test_split,
 )
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from predictive_ml.artifact import save_artifact
 from predictive_ml.data import load_data
 from predictive_ml.models import get_models
 
 EXPERIMENT_NAME = "predictive-maintenance"
 RANDOM_STATE = 2
+CV_SPLITS = 5
+CV_REPEATS = 5
 
 def build_preprocessor(Xtr):
     num_features = Xtr.select_dtypes(include="number").columns.tolist()
@@ -97,8 +97,8 @@ def eval_models(Xtr, ytr, preprocessing, model_cv, models):
             params = {
                 "model": model_name,
                 "random_state": RANDOM_STATE,
-                "cv_folds": model_cv.cvargs["n_splits"],
-                "cv_repeats": model_cv.n_repeats,
+                "cv_folds": CV_SPLITS,
+                "cv_repeats": CV_REPEATS,
             }
             for key, value in classifier.get_params().items():
                 params[f"model_{key}"] = value
@@ -175,18 +175,9 @@ def eval_final(model, Xtr, ytr, Xte, yte, threshold):
 
 
 def save_model(model, threshold):
-
-    Path("models").mkdir(exist_ok=True)
-
-    artifact = {
-        "model": model,
-        "threshold": threshold,
-    }
-
-    joblib.dump(
-        artifact,
-        "models/predictive_model.joblib"
-    )
+    # Saves the fitted pipeline (preprocessing + classifier) with its threshold.
+    # Path is resolved from the project root, not the current working directory.
+    return save_artifact(model, threshold)
 
 
 # Main
@@ -202,7 +193,7 @@ def main():
     )
 
     preprocessing = build_preprocessor(Xtr)
-    model_cv = RepeatedStratifiedKFold( n_splits=5, n_repeats=5, random_state=RANDOM_STATE ) # Using repeated cross val to reduce dependency on a single data split
+    model_cv = RepeatedStratifiedKFold( n_splits=CV_SPLITS, n_repeats=CV_REPEATS, random_state=RANDOM_STATE ) # Using repeated cross val to reduce dependency on a single data split
 
     # Choosing best model
     models = get_models(RANDOM_STATE)
@@ -232,7 +223,7 @@ def main():
         )
     )
 
-    best_threshold = threshold_results.iloc[0]["threshold"]
+    best_threshold = float(threshold_results.iloc[0]["threshold"])
     print(f"\nBest threshold: {best_threshold:.2f}")
 
     # Final evaluation
@@ -257,8 +248,8 @@ def main():
     print(matrix)
 
     # Storing best model
-    save_model( model, best_threshold )
-    print("\nModel saved.")
+    path = save_model( model, best_threshold )
+    print(f"\nModel saved to {path}")
 
 
 if __name__ == "__main__":

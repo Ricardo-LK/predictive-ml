@@ -1,16 +1,19 @@
 [project]
 name = "predictive-ml"
 version = "0.1.0"
-description = "Add your description here"
+description = "Machine-failure prediction on the UCI AI4I 2020 dataset with a FastAPI inference service"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "fastapi>=0.141.1",
     "joblib>=1.6.0",
     "matplotlib>=3.11.1",
     "mlflow>=3.16.0",
     "pandas>=3.0.5",
+    "pydantic>=2.13.5",
     "scikit-learn>=1.9.0",
     "ucimlrepo>=0.0.7",
+    "uvicorn>=0.52.4",
 ]
 
 [project.scripts]
@@ -22,6 +25,14 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
+    "httpx2>=2.16.0",
     "pytest>=9.1.1",
     "ruff>=0.16.6",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

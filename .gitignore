@@ -5,3 +5,24 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 mlruns/
+mlartifacts/
+# Experiment/model artifacts. NOTE: mlflow.db and models/predictive_model.joblib
+# (and baseline_model.joblib) are already tracked on purpose, so these rules do
+# not untrack them: the committed model lets the API run offline from a clean
+# clone, and mlflow.db keeps the experiment history. The rules only stop *new*
+# local databases/artifacts from being added by accident.
+mlflow.db
+models/*.joblib
+web-service/target/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+node_modules/
+.env
+.env.*
+*.log
+.coverage
+htmlcov/
+dist/
+build/
